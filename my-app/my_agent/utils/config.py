@@ -4,7 +4,7 @@ class AgentConfiguration(BaseModel):
     """
     Configuration settings for the RAG Agent.
     """
-    llm_model_name: str = Field(default="gemini-1.5-pro-latest", description="The language model to use for generation and reasoning.")
+    llm_model_name: str = Field(default="gemini-1.5-pro-preview-0506", description="The language model to use for generation and reasoning.")
     embedding_model_name: str = Field(default="models/embedding-001", description="The model to use for generating embeddings.")
     
     llm_temperature_default: float = Field(default=0.0, description="Default temperature for LLM calls (e.g., analysis, planning).")
