@@ -99,59 +99,6 @@ faiss_retriever_tool = Tool(
     description="Retrieves relevant documents from the FAISS vector store based on the user query. It breaks the query into sub-queries for better results."
 )
 
-if __name__ == '__main__':
-    # Example usage (requires GOOGLE_API_KEY to be set in .env)
-    # Create a .env file in the my-app directory with:
-    # GOOGLE_API_KEY="your_actual_api_key"
-
-    print("Testing FAISS Retriever Tool...")
-
-    # Test sub-query generation
-    sample_query_for_subqueries = "What are the features of LangGraph and FAISS?"
-    print(f"\nGenerating sub-queries for: '{sample_query_for_subqueries}'")
-    generated_subqueries = generate_sub_queries(sample_query_for_subqueries)
-    print(f"Generated sub-queries: {generated_subqueries}")
-
-    # Test document retrieval
-    sample_query_for_retrieval = "Tell me about LangGraph and Gemini."
-    print(f"\nRetrieving documents for query: '{sample_query_for_retrieval}'")
-    retrieved_docs = retrieve_documents(sample_query_for_retrieval)
-    
-    if retrieved_docs:
-        print("\nRetrieved Documents:")
-        for i, doc in enumerate(retrieved_docs):
-            print(f"Document {i+1}:")
-            print(f"  Page Content: {doc.page_content}")
-            if doc.metadata:
-                print(f"  Metadata: {doc.metadata}")
-    else:
-        print("No documents retrieved.")
-
-    # Test with a query that should ideally use sub-queries
-    complex_query = "Compare LangGraph's state management with traditional methods and explain FAISS indexing."
-    print(f"\nRetrieving documents for complex query: '{complex_query}'")
-    retrieved_docs_complex = retrieve_documents(complex_query)
-
-    if retrieved_docs_complex:
-        print("\nRetrieved Documents (Complex Query):")
-        for i, doc in enumerate(retrieved_docs_complex):
-            print(f"Document {i+1}:")
-            print(f"  Page Content: {doc.page_content}")
-    else:
-        print("No documents retrieved for complex query.")
-
-    print("\nFAISS Retriever Tool setup complete.")
-    print("Tool Name:", faiss_retriever_tool.name)
-    print("Tool Description:", faiss_retriever_tool.description)
-
-    # Example of invoking the tool directly (as Langchain would)
-    # Note: This assumes GOOGLE_API_KEY is available.
-    # If running this file directly, ensure .env is in the same directory or GOOGLE_API_KEY is in the environment.
-    # print("\nTesting tool invocation:")
-    # tool_result = faiss_retriever_tool.invoke("What is Gemini?")
-    # print("Tool Result:", tool_result)
-
-
 # 7. File Read Function
 def read_file_content(file_path: str) -> str:
     """
@@ -174,30 +121,3 @@ file_read_tool = Tool(
     func=read_file_content,
     description="Reads the content of a specified file. Input should be the full path to the file."
 )
-
-if __name__ == '__main__':
-    # ... (previous test code remains the same)
-
-    print("\nTesting File Read Tool...")
-    # Create a dummy file for testing
-    dummy_file_path = "dummy_test_file.txt"
-    with open(dummy_file_path, "w") as f:
-        f.write("This is a test file for the FileReadTool.\nHello World!")
-    
-    # Test reading an existing file
-    print(f"Reading content from: {dummy_file_path}")
-    content = file_read_tool.invoke(dummy_file_path)
-    print("File Content:")
-    print(content)
-
-    # Test reading a non-existing file
-    non_existent_file_path = "non_existent_file.txt"
-    print(f"\nAttempting to read content from non-existent file: {non_existent_file_path}")
-    error_message = file_read_tool.invoke(non_existent_file_path)
-    print("Tool Output (Error):")
-    print(error_message)
-
-    # Clean up the dummy file
-    if os.path.exists(dummy_file_path):
-        os.remove(dummy_file_path)
-    print(f"\nCleaned up {dummy_file_path}")
