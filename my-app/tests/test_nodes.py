@@ -10,14 +10,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage # For chat history
 from langchain_core.documents import Document
 from my_agent.utils.state import AgentState
+from my_agent.utils.config import AgentConfiguration # Import AgentConfiguration
 from my_agent.utils.nodes import (
     analyze_query_node,
     planner_node,
     tool_executor_node,
     response_synthesizer_node
 )
-# Tools are needed for tool_executor_node tests
-from my_agent.utils.tools import faiss_retriever_tool, file_read_tool
+# Import tool factory functions
+from my_agent.utils.tools import create_faiss_retriever_tool, create_file_read_tool
 
 load_dotenv()
 
@@ -59,37 +60,48 @@ class TestAgentNodes(unittest.TestCase):
         cls.google_api_key_present = bool(os.getenv("GOOGLE_API_KEY"))
         if not cls.google_api_key_present:
             print("WARNING: GOOGLE_API_KEY not found. Skipping API-dependent node tests.")
+        
+        cls.default_config = AgentConfiguration() # Instantiate default config
+
+        # Create tools using factories and the default config
+        # These tools are used in tool_executor_node tests
+        # FAISS tool creation might still print warnings if API key is missing but won't fail here.
+        # The actual API call failure will happen during tool invocation if not skipped.
+        cls.test_tools_list = [
+            create_faiss_retriever_tool(cls.default_config),
+            create_file_read_tool(cls.default_config)
+        ]
 
     # --- Tests for analyze_query_node ---
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
     def test_01_analyze_query_greeting(self):
         state = create_initial_agent_state(user_query="Hello there!")
-        updated_state = analyze_query_node(state)
+        updated_state = analyze_query_node(self.default_config, state)
         self.assertEqual(updated_state['query_type'], 'greeting', f"Reasoning: {updated_state['intermediate_steps'][-1][1].get('reasoning') if updated_state['intermediate_steps'] else 'N/A'}")
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
     def test_02_analyze_query_file_read(self):
         state = create_initial_agent_state(user_query="Can you read the file named report.txt and also check /tmp/data.csv?")
-        updated_state = analyze_query_node(state)
+        updated_state = analyze_query_node(self.default_config, state)
         self.assertEqual(updated_state['query_type'], 'file_read',  f"Reasoning: {updated_state['intermediate_steps'][-1][1].get('reasoning') if updated_state['intermediate_steps'] else 'N/A'}")
         self.assertIn("report.txt", updated_state['file_contents'])
         self.assertIn("/tmp/data.csv", updated_state['file_contents'])
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
     def test_03_analyze_query_ambiguous(self):
         history = [AIMessage(content="I can help with information retrieval and file processing.")]
         state = create_initial_agent_state(user_query="Tell me more.", chat_history=history)
-        updated_state = analyze_query_node(state)
+        updated_state = analyze_query_node(self.default_config, state)
         self.assertEqual(updated_state['query_type'], 'ambiguous', f"Reasoning: {updated_state['intermediate_steps'][-1][1].get('reasoning') if updated_state['intermediate_steps'] else 'N/A'}")
         self.assertTrue(len(updated_state['missing_info_request']) > 0)
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
     def test_04_analyze_query_retrieval(self):
         state = create_initial_agent_state(user_query="What is the capital of France?")
-        updated_state = analyze_query_node(state)
+        updated_state = analyze_query_node(self.default_config, state)
         self.assertEqual(updated_state['query_type'], 'retrieval', f"Reasoning: {updated_state['intermediate_steps'][-1][1].get('reasoning') if updated_state['intermediate_steps'] else 'N/A'}")
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for analyze_query_node")
     def test_05_analyze_query_info_response(self):
         history = [
             HumanMessage(content="Can you check the config?"),
@@ -98,53 +110,58 @@ class TestAgentNodes(unittest.TestCase):
         state = create_initial_agent_state(
             user_query="Yes, I meant the main configuration file for the web server.",
             chat_history=history,
-            missing_info_request="Which configuration file are you referring to?" # from previous turn
+            missing_info_request="Which configuration file are you referring to?"
         )
-        updated_state = analyze_query_node(state)
+        updated_state = analyze_query_node(self.default_config, state)
         self.assertEqual(updated_state['query_type'], 'info_response', f"Reasoning: {updated_state['intermediate_steps'][-1][1].get('reasoning') if updated_state['intermediate_steps'] else 'N/A'}")
 
     # --- Tests for planner_node ---
-    def test_06_planner_greeting(self): # Should skip planning
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for planner_node with LLM")
+    def test_06_planner_greeting(self): 
         state = create_initial_agent_state(user_query="Hello", query_type="greeting")
-        updated_state = planner_node(state)
+        # Planner node skips if query_type is greeting, so LLM call might be avoided.
+        # However, to be safe, let's keep skipUnless if any internal part of planner could use LLM by default.
+        # The refactored planner_node always instantiates an LLM.
+        updated_state = planner_node(self.default_config, state)
         self.assertEqual(len(updated_state['plan']), 0)
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for planner_node with LLM")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for planner_node with LLM")
     def test_07_planner_file_read(self):
         state = create_initial_agent_state(
             user_query="Read report.txt", 
             query_type="file_read",
-            file_contents={"report.txt": ""} # From analyzer
+            file_contents={"report.txt": ""} 
         )
-        updated_state = planner_node(state)
+        updated_state = planner_node(self.default_config, state)
         self.assertTrue(len(updated_state['plan']) > 0, f"Plan was empty. Reasoning: {updated_state['intermediate_steps'][-1][1].get('reasoning') if updated_state['intermediate_steps'] else 'N/A'}")
-        if updated_state['plan']: # Avoid index error if plan is empty
+        if updated_state['plan']: 
             self.assertIn("Read file 'report.txt'", updated_state['plan'][0])
             self.assertIn("Synthesize answer", updated_state['plan'][-1])
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for planner_node with LLM")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for planner_node with LLM")
     def test_08_planner_retrieval(self):
         state = create_initial_agent_state(user_query="What is LangGraph?", query_type="retrieval")
-        updated_state = planner_node(state)
+        updated_state = planner_node(self.default_config, state)
         self.assertTrue(len(updated_state['plan']) > 0, f"Plan was empty. Reasoning: {updated_state['intermediate_steps'][-1][1].get('reasoning') if updated_state['intermediate_steps'] else 'N/A'}")
         if updated_state['plan']:
             self.assertIn("Use retriever for", updated_state['plan'][0])
             self.assertIn("Synthesize answer", updated_state['plan'][-1])
             
     # --- Tests for tool_executor_node ---
+    # tool_executor_node itself does not directly make LLM calls, but the tools it uses might.
     def test_09_tool_executor_no_plan(self):
         state = create_initial_agent_state(user_query="N/A", plan=[])
-        updated_state = tool_executor_node(state, [file_read_tool])
-        self.assertEqual(updated_state['current_step_index'], 0) # No change
+        updated_state = tool_executor_node(self.default_config, state, tools=self.test_tools_list)
+        self.assertEqual(updated_state['current_step_index'], 0)
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for FAISS tool in tool_executor_node")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for FAISS tool in tool_executor_node")
     def test_10_tool_executor_faiss_retriever(self):
         state = create_initial_agent_state(
             user_query="What is LangGraph?", 
             query_type="retrieval",
             plan=["Use retriever for 'LangGraph library features'", "Synthesize answer using all gathered information."]
         )
-        updated_state = tool_executor_node(state, [faiss_retriever_tool, file_read_tool])
+        updated_state = tool_executor_node(self.default_config, state, tools=self.test_tools_list)
         self.assertTrue(len(updated_state['retrieved_documents']) > 0)
         self.assertIsInstance(updated_state['retrieved_documents'][0], Document)
         self.assertEqual(updated_state['current_step_index'], 1)
@@ -155,10 +172,10 @@ class TestAgentNodes(unittest.TestCase):
             user_query=f"Read {DUMMY_EXECUTOR_FILE_PATH}",
             query_type="file_read",
             plan=[f"Read file '{DUMMY_EXECUTOR_FILE_PATH}'", "Synthesize answer using all gathered information."],
-            file_contents={DUMMY_EXECUTOR_FILE_PATH: ""} # Analyzer adds key
+            file_contents={DUMMY_EXECUTOR_FILE_PATH: ""} 
         )
         try:
-            updated_state = tool_executor_node(state, [faiss_retriever_tool, file_read_tool])
+            updated_state = tool_executor_node(self.default_config, state, tools=self.test_tools_list)
             self.assertEqual(updated_state['file_contents'][DUMMY_EXECUTOR_FILE_PATH], DUMMY_EXECUTOR_CONTENT)
             self.assertEqual(updated_state['current_step_index'], 1)
         finally:
@@ -172,7 +189,7 @@ class TestAgentNodes(unittest.TestCase):
             plan=[f"Read file '{non_existent_file}'", "Synthesize answer using all gathered information."],
             file_contents={non_existent_file: ""}
         )
-        updated_state = tool_executor_node(state, [faiss_retriever_tool, file_read_tool])
+        updated_state = tool_executor_node(self.default_config, state, tools=self.test_tools_list)
         self.assertIn("Error: File not found", updated_state['file_contents'][non_existent_file])
         self.assertEqual(updated_state['current_step_index'], 1)
 
@@ -182,49 +199,52 @@ class TestAgentNodes(unittest.TestCase):
             plan=["Synthesize answer using all gathered information."],
             current_step_index=0
         )
-        updated_state = tool_executor_node(state, []) # No tools needed for synth
+        # Pass empty list for tools as synthesize step doesn't use them
+        updated_state = tool_executor_node(self.default_config, state, tools=[]) 
         self.assertEqual(updated_state['current_step_index'], 1)
         self.assertIn("No tool execution, proceeding to synthesis", updated_state['intermediate_steps'][-1][1])
 
     # --- Tests for response_synthesizer_node ---
-    def test_14_synthesizer_greeting(self):
+    # This node makes LLM calls unless it's a direct response type like 'greeting'.
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY usually required for response_synthesizer_node, unless direct response.")
+    def test_14_synthesizer_greeting(self): # Greeting is a direct response, no LLM call by synthesizer
         state = create_initial_agent_state(user_query="Hi", query_type="greeting")
-        updated_state = response_synthesizer_node(state)
+        updated_state = response_synthesizer_node(self.default_config, state)
         self.assertIn("Hello! I am a RAG agent.", updated_state['final_answer'])
 
-    def test_15_synthesizer_ambiguous(self):
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY usually required for response_synthesizer_node, unless direct response.")
+    def test_15_synthesizer_ambiguous(self): # Ambiguous is a direct response
         state = create_initial_agent_state(
             user_query="Tell me about it.", 
             query_type="ambiguous",
             missing_info_request="Could you please specify what 'it' refers to?"
         )
-        updated_state = response_synthesizer_node(state)
+        updated_state = response_synthesizer_node(self.default_config, state)
         self.assertEqual(updated_state['final_answer'], "Could you please specify what 'it' refers to?")
 
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for response_synthesizer_node LLM call")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for response_synthesizer_node LLM call")
     def test_16_synthesizer_data_synthesis(self):
         sample_doc = Document(page_content="LangGraph is a library by LangChain.")
         sample_file_content = "FAISS helps with vector search."
         state = create_initial_agent_state(
             user_query="What are LangGraph and FAISS?",
-            query_type="retrieval", # or file_read
+            query_type="retrieval", 
             retrieved_documents=[sample_doc],
             file_contents={"notes.txt": sample_file_content}
         )
-        updated_state = response_synthesizer_node(state)
+        updated_state = response_synthesizer_node(self.default_config, state)
         self.assertIn("LangGraph", updated_state['final_answer'])
         self.assertIn("FAISS", updated_state['final_answer'])
-        # Check for citation (simplified check)
         self.assertTrue("Document 1" in updated_state['final_answer'] or "notes.txt" in updated_state['final_answer'] or "LangChain" in updated_state['final_answer'])
         
-    @unittest.skipUnless(google_api_key_present, "GOOGLE_API_KEY required for response_synthesizer_node LLM call")
+    @unittest.skipUnless(TestAgentNodes.google_api_key_present, "GOOGLE_API_KEY required for response_synthesizer_node LLM call")
     def test_17_synthesizer_insufficient_data(self):
         state = create_initial_agent_state(
             user_query="What is the color of the sky on Mars?",
             query_type="retrieval",
             retrieved_documents=[Document(page_content="Earth's sky is blue.")]
         )
-        updated_state = response_synthesizer_node(state)
+        updated_state = response_synthesizer_node(self.default_config, state)
         self.assertTrue(
             "cannot answer" in updated_state['final_answer'].lower() or \
             "based on the provided" in updated_state['final_answer'].lower() or \
