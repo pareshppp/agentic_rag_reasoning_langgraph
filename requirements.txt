@@ -1,0 +1,14 @@
+langchain
+langchain_community
+langgraph
+langgraph-cli[inmem]
+faiss-cpu
+google-generativeai
+langchain-google-genai
+langchain-mongodb
+pymongo
+python-dotenv
+langchain_core
+langchain_google_genai
+langchain_mongodb
+typing_inspect

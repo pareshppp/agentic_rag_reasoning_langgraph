@@ -4,13 +4,13 @@ class AgentConfiguration(BaseModel):
     """
     Configuration settings for the RAG Agent.
     """
-    llm_model_name: str = Field(default="gemini-1.5-pro-preview-0506", description="The language model to use for generation and reasoning.")
-    embedding_model_name: str = Field(default="models/embedding-001", description="The model to use for generating embeddings.")
+    llm_model_name: str = Field(default="gemini-2.5-flash-preview-05-20", description="The language model to use for generation and reasoning.")
+    embedding_model_name: str = Field(default="models/gemini-embedding-001", description="The model to use for generating embeddings.")
     
     llm_temperature_default: float = Field(default=0.0, description="Default temperature for LLM calls (e.g., analysis, planning).")
     llm_temperature_synthesis: float = Field(default=0.7, description="Temperature for response synthesis LLM calls.")
     
-    retriever_k: int = Field(default=3, description="Number of documents the main retriever aims to fetch per query/sub-query.")
+    retriever_k: int = Field(default=10, description="Number of documents the main retriever aims to fetch per query/sub-query.")
     max_sub_queries: int = Field(default=3, description="Maximum number of sub-queries to generate for the retriever.")
 
     # Example of how to make it easily usable

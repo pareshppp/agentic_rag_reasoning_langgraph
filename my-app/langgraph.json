@@ -1,5 +1,0 @@
-{
-  "graphs": {
-    "MyRagAgent": "my_agent.agent:agent_runnable"
-  }
-}

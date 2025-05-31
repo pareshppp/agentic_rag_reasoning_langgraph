@@ -1,0 +1,6 @@
+{
+  "graphs": {
+    "MyRagAgent": "rag_reasoning_agent_v2.agent:agent_v2_runnable"
+  },
+  "dependencies": ["langgraph"]
+}

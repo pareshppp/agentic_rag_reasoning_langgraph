@@ -13,7 +13,7 @@ try:
     from .config import AgentConfiguration
 except ImportError:
     # Fallback for cases where script might be run directly for testing (though tests should be separate)
-    from my_agent.utils.config import AgentConfiguration
+    from rag_reasoning_agent.utils.config import AgentConfiguration
 
 # Load environment variables from .env file
 load_dotenv()

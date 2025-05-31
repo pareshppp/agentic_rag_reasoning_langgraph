@@ -2,19 +2,19 @@ import os
 import functools
 from dotenv import load_dotenv
 
-from langgraph.graph import StatefulGraph, END
+from langgraph.graph import StateGraph, END
 
 # Attempt to import necessary modules
 try:
-    from my_agent.utils.state import AgentState
-    from my_agent.utils.config import AgentConfiguration
-    from my_agent.utils.nodes import (
+    from rag_reasoning_agent.utils.state import AgentState
+    from rag_reasoning_agent.utils.config import AgentConfiguration
+    from rag_reasoning_agent.utils.nodes import (
         analyze_query_node,
         planner_node,
         tool_executor_node,
         response_synthesizer_node
     )
-    from my_agent.utils.tools import (
+    from rag_reasoning_agent.utils.tools import (
         create_faiss_retriever_tool,
         create_file_read_tool
     )
@@ -92,7 +92,7 @@ def create_graph_runnable(config: AgentConfiguration):
 
 
     # Instantiate StatefulGraph
-    graph_builder = StatefulGraph(AgentState)
+    graph_builder = StateGraph(AgentState)
 
     # Bind config (and tools for executor) to node functions using functools.partial
     analyzer_with_config = functools.partial(analyze_query_node, config)

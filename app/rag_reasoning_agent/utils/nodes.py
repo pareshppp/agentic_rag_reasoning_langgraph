@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 from langchain_core.tools import Tool
 from langchain_core.documents import Document
 
@@ -20,8 +20,8 @@ except (ImportError, ValueError):
         from utils.state import AgentState # For local testing if utils is in PYTHONPATH
         from utils.config import AgentConfiguration
     except ImportError:
-        from my_agent.utils.state import AgentState # Fallback for specific execution context
-        from my_agent.utils.config import AgentConfiguration
+        from rag_reasoning_agent.utils.state import AgentState # Fallback for specific execution context
+        from rag_reasoning_agent.utils.config import AgentConfiguration
 
 
 # Load environment variables from .env file, useful for local testing
@@ -89,7 +89,7 @@ def analyze_query_node(config: AgentConfiguration, state: AgentState) -> AgentSt
 # --- Planner Node ---
 class Plan(BaseModel):
     """Defines the structured output for the planning phase."""
-    steps: list[str] = Field(description="A list of actionable steps...")
+    steps: list[str] = Field(description="A list of actionable steps. Each step must be a specific tool call string formatted as 'ToolName: \"argument\"' (e.g., \"Use retriever for: \'search query\'\", \"Read file: \'file_path.txt\'\") or the exact string 'Synthesize answer'.")
     reasoning: str = Field(description="Brief explanation of why this plan was generated.")
 
 def planner_node(config: AgentConfiguration, state: AgentState) -> AgentState:
@@ -99,34 +99,55 @@ def planner_node(config: AgentConfiguration, state: AgentState) -> AgentState:
 
     user_query = state['user_query']
     query_type = state['query_type']
-    # ... (rest of variable retrieval from state)
+    
     if query_type not in ['retrieval', 'file_read', 'info_response', 'complex_qa']:
         print(f"  Skipping planning for query_type '{query_type}'.")
         state['plan'] = []
         state['current_step_index'] = 0
         return state
 
-    # ... (context preparation: formatted_chat_history, document_summaries, available_files)
-    # Same as before
     formatted_chat_history = "\n".join([f"{msg.type}: {msg.content}" for msg in state.get('chat_history', [])])
     document_summaries = [doc.page_content[:100] + "..." for doc in state.get('retrieved_documents', [])]
     available_files = list(state.get('file_contents', {}).keys())
 
-
     planner_prompt_template = """
-    You are an expert planner... (rest of the prompt remains the same as before)
-    User Query: {user_query}
-    Query Type: {query_type}
-    Chat History:
-    {chat_history}
-    Available Tools: ...
-    Current Knowledge:
-    - Retrieved Documents (summaries): {document_summaries}
-    - Available File Contents (filenames only): {available_files}
-    ... (Ensure your entire response is a single JSON object that conforms to the Plan model.)
-    """ # Prompt shortened for brevity
+You are an expert planner. Your goal is to create a step-by-step plan to address the user's query based on the query type and available context. Your output *must* be a JSON object conforming to the Plan model below.
 
-    planner_prompt = ChatPromptTemplate.from_template(template=planner_prompt_template) # Full prompt from prev version
+Available Tools:
+1. FaissRetrieverTool: Use this tool to search for general information or answer questions based on a large knowledge base. To use it, generate a step string: "Use retriever for 'your search query here'"
+2. FileReadTool: Use this tool to read the content of a specific file that has been mentioned or is part of the context. To use it, generate a step string: "Read file 'path/to/your/file.txt'"
+
+Plan Steps Formatting:
+- Each step in the 'steps' list must be a string.
+- If using a tool, the string must exactly match the formats described above (e.g., "Use retriever for 'search query'", "Read file 'file.txt'").
+- If you have gathered all necessary information from tool use (or if no tools are needed for the query type) and are ready to formulate the final response, the last step should be the exact string: "Synthesize answer"
+- Do not invent new tool names or formats.
+
+Context:
+User Query: {user_query}
+Query Type: {query_type}
+Chat History:
+{chat_history}
+
+Current Knowledge:
+- Retrieved Documents (summaries): {document_summaries}
+- Available File Contents (filenames only): {available_files}
+
+Example Plan for a query like "What is the capital of France and what is in 'info.txt'?":
+{{
+  "steps": [
+    "Use retriever for 'capital of France'",
+    "Read file 'info.txt'",
+    "Synthesize answer"
+  ],
+  "reasoning": "First, find the capital of France using the retriever. Second, read the content of info.txt. Finally, synthesize the answer using the gathered information."
+}}
+
+Based on the user query and available information, generate the plan.
+Ensure your entire response is a single JSON object that conforms to the Plan model.
+"""
+
+    planner_prompt = ChatPromptTemplate.from_template(template=planner_prompt_template)
     planner_chain = planner_prompt | llm.with_structured_output(Plan)
 
     try:
@@ -142,6 +163,7 @@ def planner_node(config: AgentConfiguration, state: AgentState) -> AgentState:
             state['intermediate_steps'] = []
         state['intermediate_steps'].append(("PlannerNode", plan_result.dict()))
         print(f"  Planner Node Reasoning: {plan_result.reasoning}")
+        print(f"  Generated Plan: {plan_result.steps}")
     except Exception as e:
         print(f"  Error during planning: {e}")
         state['plan'] = ["Error: Could not generate a plan."]
